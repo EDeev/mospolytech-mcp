@@ -63,6 +63,24 @@ rasp.dmami.ru, записались в БД, второй вызов уже ид
 - Доступ к PostgreSQL — свой пользователь `mospolytech_mcp` на общем сервере
   команды (не `postgres`/admin), спросите данные в чате, если не сохранили
 
+## Быстрый старт
+
+Если стоит GNU Make (на Windows — `choco install make`), всё поднимается
+одной командой:
+
+```powershell
+make up
+```
+
+Она создаёт `.venv`, ставит зависимости, копирует `.env.example` в `.env`,
+накатывает миграции и запускает сервер. На свежем клоне первый запуск
+остановится с просьбой вписать `DATABASE_URL` в `.env` — впишите и
+запустите `make up` ещё раз. Остальные команды (`make test`, `make migrate`,
+`make run`, `make check-lk`, `make clean`) — в `make help`. Работает из
+PowerShell, cmd и Git Bash, а также на Linux/macOS.
+
+Ниже — то же самое руками, без make.
+
 ## Установка
 
 ```powershell
