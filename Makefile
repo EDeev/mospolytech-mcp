@@ -1,12 +1,12 @@
 ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
 SYS_PYTHON ?= py -3.14
-VENV_PYTHON := .venv/Scripts/python.exe
+VENV_PIP := .venv/Scripts/pip.exe
 PY := .venv\Scripts\python.exe
 else
 SYS_PYTHON ?= python3.14
-VENV_PYTHON := .venv/bin/python
-PY := $(VENV_PYTHON)
+VENV_PIP := .venv/bin/pip
+PY := .venv/bin/python
 endif
 
 STAMP := .venv/.installed
@@ -23,10 +23,10 @@ setup: install .env ## venv, зависимости и .env
 
 install: $(STAMP) ## venv и зависимости
 
-$(VENV_PYTHON):
+$(VENV_PIP):
 	$(SYS_PYTHON) -m venv .venv
 
-$(STAMP): $(VENV_PYTHON) pyproject.toml
+$(STAMP): $(VENV_PIP) pyproject.toml
 	$(PY) -m pip install -e ".[dev]"
 	@$(PY) -c "import pathlib; pathlib.Path('$(STAMP)').touch()"
 
