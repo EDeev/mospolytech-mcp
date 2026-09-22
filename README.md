@@ -132,6 +132,23 @@ MPU_LOGIN и MPU_PASSWORD в свой `.env`, дальше `scripts/check_lk_api
 (например, Claude Desktop/Code). Пока один инструмент, `list_groups`
 (ФОД-001) — список групп с кэшем в БД на 15 минут.
 
+### HTTP-режим
+
+Если сервер крутится в VM или на другой машине, stdio не подходит —
+есть HTTP-режим (streamable HTTP, эндпоинт `/mcp`):
+
+```bash
+make run-http            # 0.0.0.0:8000
+make run-http PORT=9000  # HOST и PORT можно переопределить
+```
+
+Без make: `python -m mospolytech_mcp.server --http --host 0.0.0.0 --port 8000`.
+
+В Postman: New → MCP, транспорт HTTP, URL `http://<адрес VM>:8000/mcp`,
+Connect — в списке инструментов появится `list_groups`, его можно вызвать
+прямо оттуда. Авторизации на сервере нет, так что наружу (`0.0.0.0`)
+открывать только на тестовой машине.
+
 ## Структура репозитория
 
 ```

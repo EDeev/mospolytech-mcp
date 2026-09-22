@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 from pathlib import Path
@@ -32,7 +33,16 @@ async def list_groups() -> list[str]:
 
 
 def main() -> None:
-    mcp.run(transport="stdio")
+    parser = argparse.ArgumentParser(prog="mospolytech-mcp")
+    parser.add_argument("--http", action="store_true", help="HTTP вместо stdio")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    args = parser.parse_args()
+
+    if args.http:
+        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

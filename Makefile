@@ -11,8 +11,11 @@ endif
 
 STAMP := .venv/.installed
 
+HOST ?= 0.0.0.0
+PORT ?= 8000
+
 .DEFAULT_GOAL := help
-.PHONY: help up setup install check-env migrate run test check-lk clean
+.PHONY: help up setup install check-env migrate run run-http test check-lk clean
 
 help: 
 	@$(SYS_PYTHON) -X utf8 -c "import re, sys; [print('  make {:<10} {}'.format(*m.groups())) for m in re.finditer(r'^([a-z-]+):.*?## (.*)', open(sys.argv[1], encoding='utf-8').read(), re.M)]" $(firstword $(MAKEFILE_LIST))
@@ -44,6 +47,9 @@ migrate: check-env ## миграции БД
 run: check-env ## запустить MCP-сервер (stdio)
 	@echo mospolytech-mcp is running on stdio, Ctrl+C to stop 1>&2
 	@$(PY) -m mospolytech_mcp.server
+
+run-http: check-env ## сервер по HTTP, http://HOST:PORT/mcp
+	$(PY) -m mospolytech_mcp.server --http --host $(HOST) --port $(PORT)
 
 test: install ## офлайн-тесты
 	$(PY) -m pytest -q
