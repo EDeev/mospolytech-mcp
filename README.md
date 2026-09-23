@@ -129,8 +129,17 @@ MPU_LOGIN и MPU_PASSWORD в свой `.env`, дальше `scripts/check_lk_api
 ```
 
 Поднимается на stdio-транспорте — так подключается локальный MCP-клиент
-(например, Claude Desktop/Code). Пока один инструмент, `list_groups`
-(ФОД-001) — список групп с кэшем в БД на 15 минут.
+(например, Claude Desktop/Code). Инструменты:
+
+| Инструмент | Что делает |
+|---|---|
+| `list_groups` | список групп университета (ФОД-001), кэш в БД на 15 минут |
+| `add_tracked_group(user, group)` | добавить группу в отслеживаемые пользователя; группа сверяется со списком `list_groups`, повторное добавление ничего не дублирует |
+| `list_tracked_groups(user)` | отслеживаемые группы пользователя в порядке добавления |
+| `remove_tracked_group(user, group)` | убрать группу из отслеживаемых |
+
+Отслеживаемые группы лежат в таблице `tracked_groups`. Авторизации на
+сервере пока нет, так что `user` — просто логин, который передаёт клиент.
 
 ### HTTP-режим
 
@@ -180,11 +189,12 @@ make docker-down
 `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` в `.env` — compose читает
 его сам, а `DATABASE_URL` оттуда для контейнера не используется.
 
-Посмотреть, что кэш реально лёг в контейнерную БД (это же удобно показывать
-после рестарта):
+Посмотреть, что данные реально легли в контейнерную БД (это же удобно
+показывать после рестарта):
 
 ```bash
 docker compose exec db psql -U mospolytech_mcp -c "select id, jsonb_array_length(groups), fetched_at from groups_cache"
+docker compose exec db psql -U mospolytech_mcp -c "select * from tracked_groups"
 ```
 
 ## Структура репозитория
