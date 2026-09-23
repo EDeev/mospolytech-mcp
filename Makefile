@@ -15,10 +15,10 @@ HOST ?= 0.0.0.0
 PORT ?= 8000
 
 .DEFAULT_GOAL := help
-.PHONY: help up setup install check-env migrate run run-http test check-lk clean
+.PHONY: help up setup install check-env migrate run run-http test check-lk clean docker-up docker-down docker-logs
 
 help: 
-	@$(SYS_PYTHON) -X utf8 -c "import re, sys; [print('  make {:<10} {}'.format(*m.groups())) for m in re.finditer(r'^([a-z-]+):.*?## (.*)', open(sys.argv[1], encoding='utf-8').read(), re.M)]" $(firstword $(MAKEFILE_LIST))
+	@$(SYS_PYTHON) -X utf8 -c "import re, sys; [print('  make {:<12} {}'.format(*m.groups())) for m in re.finditer(r'^([a-z-]+):.*?## (.*)', open(sys.argv[1], encoding='utf-8').read(), re.M)]" $(firstword $(MAKEFILE_LIST))
 
 up: migrate run ## всё сразу: окружение, .env, миграции, сервер
 
@@ -56,6 +56,15 @@ test: install ## офлайн-тесты
 
 check-lk: install .env ## проверка lk_api на реальном аккаунте
 	$(PY) scripts/check_lk_api.py
+
+docker-up: 
+	docker compose up --build -d
+
+docker-down: 
+	docker compose down
+
+docker-logs: 
+	docker compose logs -f
 
 clean: ## удалить .venv и кэши
 	$(SYS_PYTHON) -c "import shutil; [shutil.rmtree(p, ignore_errors=True) for p in ('.venv', '.pytest_cache')]"

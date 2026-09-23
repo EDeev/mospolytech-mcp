@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: mospolytech-db
+    hostname: db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mospolytech_mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-mospolytech_mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mospolytech_mcp}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mcp:
+    build: .
+    image: mospolytech-mcp
+    container_name: mospolytech-mcp
+    hostname: mcp
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mospolytech_mcp}:${POSTGRES_PASSWORD:-mospolytech_mcp}@db:5432/${POSTGRES_DB:-mospolytech_mcp}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

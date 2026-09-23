@@ -149,6 +149,44 @@ Connect — в списке инструментов появится `list_grou
 прямо оттуда. Авторизации на сервере нет, так что наружу (`0.0.0.0`)
 открывать только на тестовой машине.
 
+## Docker
+
+Тот же сервер, но в контейнере и со своей PostgreSQL рядом — так он живёт
+на ВМ начиная с ЛР3. Нужны Docker и docker compose v2, `.env` и venv не
+нужны:
+
+```bash
+make docker-up      
+make docker-logs   
+make docker-down    
+```
+
+Что происходит:
+
+- `Dockerfile` собирает образ из исходников: `python:3.14-slim`, отдельным
+  слоем зависимости из `pyproject.toml`, потом сам пакет. При старте
+  контейнер накатывает миграции (`alembic upgrade head`) и запускает сервер
+  в HTTP-режиме на `0.0.0.0:8000` — снаружи это `http://<адрес>:8000/mcp`.
+- `docker-compose.yaml` поднимает два сервиса: `db` (`postgres:17-alpine`)
+  и `mcp` (наш образ). Сервер стартует только после того, как БД ответила на
+  `pg_isready`, и ходит к ней по имени `db` внутри сети compose — наружу
+  порт PostgreSQL не выставлен. `DATABASE_URL` для контейнера compose
+  собирает сам из `POSTGRES_*`; `.env` в образ не попадает (`.dockerignore`).
+- Файлы БД лежат в volume `pgdata`, поэтому `docker compose down` и
+  повторный `up` данные не теряют. Снести вместе с данными —
+  `docker compose down -v`.
+
+Логин, пароль и имя БД по умолчанию `mospolytech_mcp`; переопределяются через
+`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` в `.env` — compose читает
+его сам, а `DATABASE_URL` оттуда для контейнера не используется.
+
+Посмотреть, что кэш реально лёг в контейнерную БД (это же удобно показывать
+после рестарта):
+
+```bash
+docker compose exec db psql -U mospolytech_mcp -c "select id, jsonb_array_length(groups), fetched_at from groups_cache"
+```
+
 ## Структура репозитория
 
 ```
@@ -166,4 +204,6 @@ src/mospolytech_mcp/
 alembic/          — миграции БД (alembic upgrade head накатывает схему)
 tests/            — офлайн-тесты (pytest, без сети)
 scripts/          — ручные проверочные скрипты (против реального ЛК)
+Dockerfile        — образ сервера (сборка из исходников, миграции + HTTP-режим на старте)
+docker-compose.yaml — сервер + PostgreSQL с volume для данных
 ```
