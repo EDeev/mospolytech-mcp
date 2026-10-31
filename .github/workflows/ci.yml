@@ -48,3 +48,28 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
+
+  deploy-stage:
+    needs: publish
+    if: github.event_name == 'push' && github.ref_name == 'dev'
+    runs-on: [self-hosted, test]
+    env:
+      STAGE: edsnrv327@192.168.235.129
+      SSH_OPTS: -i /home/edsnrv327/.ssh/stage_deploy -o StrictHostKeyChecking=accept-new
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Copy compose file to stage
+        run: scp $SSH_OPTS deploy/docker-compose.yaml $STAGE:mospolytech-deploy/docker-compose.yaml
+
+      - name: Deploy image to stage
+        run: ssh $SSH_OPTS $STAGE 'cd mospolytech-deploy && docker compose pull && docker compose up -d'
+
+      - name: Check that the server responds
+        run: |
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://192.168.235.129:8000/mcp || true)
+            if [ "$code" != "000" ]; then echo "stage is up, HTTP $code"; exit 0; fi
+            sleep 3
+          done
+          echo "stage did not respond" && exit 1
