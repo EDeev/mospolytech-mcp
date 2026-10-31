@@ -15,7 +15,7 @@ HOST ?= 0.0.0.0
 PORT ?= 8000
 
 .DEFAULT_GOAL := help
-.PHONY: help up setup install check-env migrate run run-http test check-lk clean docker-up docker-down docker-logs
+.PHONY: help up setup install check-env migrate run run-http test secret-key check-lk clean docker-up docker-down docker-logs
 
 help: 
 	@$(SYS_PYTHON) -X utf8 -c "import re, sys; [print('  make {:<12} {}'.format(*m.groups())) for m in re.finditer(r'^([a-z-]+):.*?## (.*)', open(sys.argv[1], encoding='utf-8').read(), re.M)]" $(firstword $(MAKEFILE_LIST))
@@ -53,6 +53,9 @@ run-http: check-env ## сервер по HTTP, http://HOST:PORT/mcp
 
 test: install ## офлайн-тесты
 	$(PY) -m pytest -q
+
+secret-key: install ## сгенерировать MCP_SECRET_KEY
+	@$(PY) -m mospolytech_mcp.crypto
 
 check-lk: install .env ## проверка lk_api на реальном аккаунте
 	$(PY) scripts/check_lk_api.py
