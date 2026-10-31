@@ -15,7 +15,7 @@ HOST ?= 0.0.0.0
 PORT ?= 8000
 
 .DEFAULT_GOAL := help
-.PHONY: help up setup install check-env migrate run run-http test teachers-index secret-key check-lk clean docker-up docker-down docker-logs
+.PHONY: help up setup install check-env migrate run run-http test test-unit cov teachers-index secret-key check-lk clean docker-up docker-down docker-logs
 
 help: 
 	@$(SYS_PYTHON) -X utf8 -c "import re, sys; [print('  make {:<12} {}'.format(*m.groups())) for m in re.finditer(r'^([a-z-]+):.*?## (.*)', open(sys.argv[1], encoding='utf-8').read(), re.M)]" $(firstword $(MAKEFILE_LIST))
@@ -51,8 +51,14 @@ run: check-env ## запустить MCP-сервер (stdio)
 run-http: check-env ## сервер по HTTP, http://HOST:PORT/mcp
 	$(PY) -m mospolytech_mcp.server --http --host $(HOST) --port $(PORT)
 
-test: install ## офлайн-тесты
+test: install ## все тесты (интеграционные — если в .env задан TEST_DATABASE_URL)
 	$(PY) -m pytest -q
+
+test-unit: install ## только офлайн-тесты, без БД
+	$(PY) -m pytest -q tests/test_units_offline.py tests/test_lk_api_offline.py tests/test_open_api_offline.py tests/test_tracked_offline.py
+
+cov: install ## тесты с отчётом о покрытии
+	$(PY) -m pytest -q --cov=mospolytech_mcp --cov-report=term-missing
 
 teachers-index: check-env ## пересобрать индекс преподавателей сейчас
 	$(PY) -m mospolytech_mcp.teachers
