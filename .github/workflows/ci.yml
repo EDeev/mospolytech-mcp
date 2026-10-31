@@ -9,7 +9,64 @@ env:
   IMAGE: ghcr.io/edeev/mospolytech-mcp
 
 jobs:
+  # Статический анализ: сборка не начнётся, пока все три проверки не пройдут
+  quality:
+    name: quality (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install ruff==0.17.3
+      - name: Full report (does not fail the build)
+        run: ruff check --exit-zero --output-format=full . | tee ruff-report.txt
+      - name: Blocker rules E9, F63, F7, F82 (any finding fails the build)
+        run: ruff check --select E9,F63,F7,F82 --output-format=full .
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ruff-report
+          path: ruff-report.txt
+
+  security:
+    name: security (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install "bandit[toml]==1.9.4"
+      - name: Full report (does not fail the build)
+        run: bandit -r src -c pyproject.toml -f html -o bandit-report.html --exit-zero
+      - name: HIGH severity and confidence fail the build
+        run: bandit -r src -c pyproject.toml --severity-level high --confidence-level high
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.html
+
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar xz gitleaks
+      - name: Scan history of the current branch (any secret fails the build)
+        run: ./gitleaks git --redact --log-opts="HEAD" --report-format json --report-path gitleaks-report.json .
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+
   build:
+    needs: [quality, security, secrets]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

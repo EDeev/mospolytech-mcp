@@ -33,6 +33,15 @@ where = ["src"]
 [tool.setuptools.package-data]
 "mospolytech_mcp.open_api._vendor" = ["hash_salt.txt", "*.md"]
 
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+# сторонний код (лицензия в NOTICE.md) не проверяем
+extend-exclude = ["src/mospolytech_mcp/open_api/_vendor"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "src/mospolytech_mcp/open_api/_vendor"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
