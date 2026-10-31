@@ -65,11 +65,12 @@ jobs:
       - name: Deploy image to stage
         run: ssh $SSH_OPTS $STAGE 'cd mospolytech-deploy && docker compose pull && docker compose up -d'
 
-      - name: Check that the server responds
+      - name: Health check
         run: |
           for i in $(seq 1 20); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://192.168.235.129:8000/mcp || true)
-            if [ "$code" != "000" ]; then echo "stage is up, HTTP $code"; exit 0; fi
+            if body=$(curl -fsS --max-time 5 http://192.168.235.129:8000/health); then
+              echo "stage is healthy: $body"; exit 0
+            fi
             sleep 3
           done
-          echo "stage did not respond" && exit 1
+          echo "stage /health did not succeed within 60 s" && exit 1
