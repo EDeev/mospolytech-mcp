@@ -224,10 +224,22 @@ class Notification(Base):
 
 
 class TrackedGroup(Base):
+    """Группа, которую отслеживает пользователь.
+
+    Привязка — по user_id (внешний ключ на users, 2026-10-31). user_login — прежняя привязка строкой, оставлена
+    для совместимости (expand/contract): код заполняет его логином, удаление столбца — следующий шаг миграций.
+    В БД есть ещё CHECK (user_id IS NOT NULL) — через него миграция включила NOT NULL без сканирования таблицы."""
+
     __tablename__ = "tracked_groups"
-    __table_args__ = (UniqueConstraint("user_login", "group_name"),)
+    __table_args__ = (
+        UniqueConstraint("user_login", "group_name"),
+        UniqueConstraint("user_id", "group_name", name="uq_tracked_groups_user_id_group_name"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE", name="fk_tracked_groups_user_id_users")
+    )
     user_login: Mapped[str] = mapped_column(String(100), index=True)
     group_name: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(
