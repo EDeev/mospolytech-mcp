@@ -1,0 +1,66 @@
+name: Deploy prod
+
+# Отдельный конвейер доставки на PROD: запускается после успешного CI на ветке main (образ prod собран, прошёл
+# анализ и тесты и опубликован). Образцом схемы БД служит STAGE. Перед изменениями — резервная копия БД PROD.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy-prod:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: [self-hosted, test]
+    environment: production          # ручное подтверждение выкладки на prod
+    env:
+      STAGE: edsnrv327@192.168.235.129
+      PROD: edsnrv327@192.168.235.130
+      STAGE_SSH: -i /home/edsnrv327/.ssh/stage_deploy -o StrictHostKeyChecking=accept-new
+      PROD_SSH: -i /home/edsnrv327/.ssh/prod_deploy -o StrictHostKeyChecking=accept-new
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Back up PROD database
+        run: ssh $PROD_SSH $PROD 'cd mospolytech-deploy && sh -s' < scripts/backup_db.sh
+
+      - name: Dump STAGE schema
+        run: ssh $STAGE_SSH $STAGE 'cd mospolytech-deploy && sh -s' < scripts/dump_schema.sh > $RUNNER_TEMP/schema-stage.sql
+
+      - name: Dump PROD schema before deployment
+        run: ssh $PROD_SSH $PROD 'cd mospolytech-deploy && sh -s' < scripts/dump_schema.sh > $RUNNER_TEMP/schema-prod-before.sql
+
+      - name: Compare PROD and STAGE schemas (before)
+        run: |
+          if diff -u $RUNNER_TEMP/schema-prod-before.sql $RUNNER_TEMP/schema-stage.sql; then
+            echo "PROD and STAGE schemas are already identical"
+          else
+            echo "Schemas differ, PROD will be brought to the STAGE schema"
+          fi
+
+      - name: Copy compose file to prod
+        run: scp $PROD_SSH deploy/docker-compose.yaml $PROD:mospolytech-deploy/docker-compose.yaml
+
+      - name: Apply migrations to PROD database
+        run: ssh $PROD_SSH $PROD 'cd mospolytech-deploy && docker compose pull -q && docker compose run --rm migrate'
+
+      - name: Deploy image to prod
+        run: ssh $PROD_SSH $PROD 'cd mospolytech-deploy && docker compose up -d'
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 20); do
+            if body=$(curl -fsS --max-time 5 http://192.168.235.130:8000/health); then
+              echo "prod is healthy: $body"; exit 0
+            fi
+            sleep 3
+          done
+          echo "prod /health did not succeed within 60 s" && exit 1
+
+      - name: Dump PROD schema after deployment
+        run: ssh $PROD_SSH $PROD 'cd mospolytech-deploy && sh -s' < scripts/dump_schema.sh > $RUNNER_TEMP/schema-prod-after.sql
+
+      - name: Verify that PROD and STAGE schemas are identical
+        run: diff -u $RUNNER_TEMP/schema-stage.sql $RUNNER_TEMP/schema-prod-after.sql && echo "PROD and STAGE schemas are identical"

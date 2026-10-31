@@ -16,6 +16,18 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Одноразовый сервис: применяет миграции Alembic и завершается, сервер стартует после него
+  migrate:
+    build: .
+    image: mospolytech-mcp
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mospolytech_mcp}:${POSTGRES_PASSWORD:-mospolytech_mcp}@db:5432/${POSTGRES_DB:-mospolytech_mcp}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   mcp:
     build: .
     image: mospolytech-mcp
@@ -34,8 +46,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
