@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 
 
@@ -35,6 +35,20 @@ class Settings:
     # индекс преподавателей пересобирается не чаще, чем раз в teacher_index_ttl
     teacher_index: bool = True
     teacher_index_ttl: timedelta = timedelta(hours=24)
+    # сроки свежести персональных данных из ЛК, по видам
+    personal_ttl: dict[str, timedelta] = field(
+        default_factory=lambda: {
+            "profile": timedelta(hours=24),  # меняется редко; группа для my_schedule — из student_profiles
+            "schedule": timedelta(hours=1),
+            "performance": timedelta(hours=1),
+            "notifications": timedelta(minutes=5),
+            "payments": timedelta(hours=1),
+            "requests": timedelta(minutes=30),
+            "dialogs": timedelta(minutes=1),
+            "messages": timedelta(minutes=1),
+            "group_chat": timedelta(hours=24),
+        }
+    )
     # как часто обновлять JWT по refresh-токену (ФЛК-001)
     jwt_refresh_interval: timedelta = timedelta(minutes=30)
     public_url: str | None = None
@@ -53,6 +67,7 @@ class Settings:
             schedule_ttl=_minutes("SCHEDULE_TTL_MINUTES", 360),
             teacher_index=_flag("TEACHER_INDEX", True),
             teacher_index_ttl=_minutes("TEACHER_INDEX_TTL_MINUTES", 24 * 60),
+            personal_ttl=defaults.personal_ttl,
             jwt_refresh_interval=defaults.jwt_refresh_interval,
             public_url=(os.environ.get("MCP_PUBLIC_URL") or "").rstrip("/") or None,
         )
