@@ -3,6 +3,12 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [SemVer](https://semver.org/lang/ru/).
 Раздел версии целиком уходит в описание релиза на GitHub (`.github/workflows/release.yml`).
 
+## [1.0.1] — 2026-10-31
+
+### Исправлено
+- Вход в личный кабинет: старый PHP API ЛК с 2026-10-30 переехал на `https://old-e.mospolytech.ru`,
+  по прежнему адресу `e.mospolytech.ru/old/lk_api.php` вход отвечал 405 Not Allowed.
+
 ## [1.0.0] — 2026-10-31
 
 Первый релиз: сервер со всеми инструментами из ТЗ, развёрнут на prod.
@@ -26,4 +32,5 @@
   сверка схем стендов, `/health`.
 - Образ `ghcr.io/edeev/mospolytech-mcp:1.0.0`, пакет (wheel, sdist) — в релизе.
 
+[1.0.1]: https://github.com/EDeev/mospolytech-mcp/releases/tag/v1.0.1
 [1.0.0]: https://github.com/EDeev/mospolytech-mcp/releases/tag/v1.0.0
