@@ -127,7 +127,11 @@ class LKAccessLog(Base):
     """Журнал обращений к API личного кабинета (ФХД-004). Открытый API сюда не пишется."""
 
     __tablename__ = "lk_access_log"
-    __table_args__ = (Index("ix_lk_access_log_user_created", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_lk_access_log_user_created", "user_id", "created_at"),
+        # выборки и очистка журнала за период
+        Index("ix_lk_access_log_created_at", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

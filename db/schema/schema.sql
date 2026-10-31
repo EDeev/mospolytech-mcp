@@ -307,6 +307,8 @@ ALTER TABLE ONLY public.users
 
 CREATE INDEX ix_api_keys_user_id ON public.api_keys USING btree (user_id);
 
+CREATE INDEX ix_lk_access_log_created_at ON public.lk_access_log USING btree (created_at);
+
 CREATE INDEX ix_lk_access_log_user_created ON public.lk_access_log USING btree (user_id, created_at);
 
 CREATE INDEX ix_notifications_user_id ON public.notifications USING btree (user_id);
