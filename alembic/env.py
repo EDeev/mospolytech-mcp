@@ -25,6 +25,18 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 if database_url := config.attributes.get("database_url") or os.environ.get("DATABASE_URL"):
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
+# Тайм-ауты в начале каждой транзакции миграций (и в SQL офлайн-режима --sql): миграция не ждёт блокировку
+# дольше 5 с (иначе очередь за ней блокирует все запросы к таблице) и не выполняет один оператор дольше 5 мин.
+# SET, а не SET LOCAL: значения действуют до конца соединения, в том числе в блоках autocommit_block().
+TIMEOUTS = ("SET lock_timeout = '5s'", "SET statement_timeout = '5min'")
+
+
+def run_with_timeouts() -> None:
+    with context.begin_transaction():
+        for statement in TIMEOUTS:
+            context.execute(statement)
+        context.run_migrations()
+
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
@@ -34,16 +46,12 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
-
-    with context.begin_transaction():
-        context.run_migrations()
+    run_with_timeouts()
 
 
 def do_run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
-
-    with context.begin_transaction():
-        context.run_migrations()
+    run_with_timeouts()
 
 
 async def run_async_migrations() -> None:

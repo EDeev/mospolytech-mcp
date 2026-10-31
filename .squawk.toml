@@ -1,0 +1,13 @@
+# Настройки squawk — линтера SQL миграций (задание sql в CI проверяет alembic upgrade head --sql).
+pg_version = "17.0"
+
+# Исключены правила о типах столбцов: типы берутся из моделей SQLAlchemy (String(n) -> varchar(n),
+# Integer -> integer, SmallInteger -> smallint, первичные ключи -> serial) и задаются при создании новых,
+# пустых таблиц. Эти правила нацелены на смену типов существующих больших таблиц (ALTER COLUMN TYPE
+# переписывает таблицу под эксклюзивной блокировкой), к созданию таблиц они не относятся.
+excluded_rules = [
+    "prefer-text-field",
+    "prefer-bigint-over-int",
+    "prefer-bigint-over-smallint",
+    "prefer-identity",
+]
