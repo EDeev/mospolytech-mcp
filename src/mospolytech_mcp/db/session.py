@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 
@@ -16,8 +18,8 @@ def _database_url() -> str:
     return url
 
 
-def make_engine(database_url: str | None = None) -> AsyncEngine:
-    return create_async_engine(database_url or _database_url())
+def make_engine(database_url: str | None = None, **kwargs: Any) -> AsyncEngine:
+    return create_async_engine(database_url or _database_url(), **kwargs)
 
 
 def make_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

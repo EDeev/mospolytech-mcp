@@ -9,7 +9,64 @@ env:
   IMAGE: ghcr.io/edeev/mospolytech-mcp
 
 jobs:
+  # Статический анализ: сборка не начнётся, пока все три проверки не пройдут
+  quality:
+    name: quality (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install ruff==0.17.3
+      - name: Full report (does not fail the build)
+        run: ruff check --exit-zero --output-format=full . | tee ruff-report.txt
+      - name: Blocker rules E9, F63, F7, F82 (any finding fails the build)
+        run: ruff check --select E9,F63,F7,F82 --output-format=full .
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ruff-report
+          path: ruff-report.txt
+
+  security:
+    name: security (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install "bandit[toml]==1.9.4"
+      - name: Full report (does not fail the build)
+        run: bandit -r src -c pyproject.toml -f html -o bandit-report.html --exit-zero
+      - name: HIGH severity and confidence fail the build
+        run: bandit -r src -c pyproject.toml --severity-level high --confidence-level high
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.html
+
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar xz gitleaks
+      - name: Scan history of the current branch (any secret fails the build)
+        run: ./gitleaks git --redact --log-opts="HEAD" --report-format json --report-path gitleaks-report.json .
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+
   build:
+    needs: [quality, security, secrets]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -23,8 +80,43 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  publish:
+  # Юнит- и интеграционные тесты для всех веток: между сборкой и доставкой
+  test:
     needs: build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: mospolytech_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d mospolytech_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/mospolytech_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Run unit and integration tests
+        run: pytest -v --cov=mospolytech_mcp --cov-report=term-missing --cov-report=xml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage
+          path: coverage.xml
+
+  publish:
+    needs: test
     if: github.event_name == 'push' && (github.ref_name == 'dev' || github.ref_name == 'main')
     runs-on: ubuntu-latest
     permissions:
@@ -48,3 +140,29 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
+
+  deploy-stage:
+    needs: publish
+    if: github.event_name == 'push' && github.ref_name == 'dev'
+    runs-on: [self-hosted, test]
+    env:
+      STAGE: edsnrv327@192.168.235.129
+      SSH_OPTS: -i /home/edsnrv327/.ssh/stage_deploy -o StrictHostKeyChecking=accept-new
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Copy compose file to stage
+        run: scp $SSH_OPTS deploy/docker-compose.yaml $STAGE:mospolytech-deploy/docker-compose.yaml
+
+      - name: Deploy image to stage
+        run: ssh $SSH_OPTS $STAGE 'cd mospolytech-deploy && docker compose pull && docker compose up -d'
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 20); do
+            if body=$(curl -fsS --max-time 5 http://192.168.235.129:8000/health); then
+              echo "stage is healthy: $body"; exit 0
+            fi
+            sleep 3
+          done
+          echo "stage /health did not succeed within 60 s" && exit 1

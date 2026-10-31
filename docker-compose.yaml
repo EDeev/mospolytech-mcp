@@ -23,6 +23,14 @@ services:
     hostname: mcp
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mospolytech_mcp}:${POSTGRES_PASSWORD:-mospolytech_mcp}@db:5432/${POSTGRES_DB:-mospolytech_mcp}
+      MCP_SECRET_KEY: ${MCP_SECRET_KEY:?MCP_SECRET_KEY не задан — python -m mospolytech_mcp.crypto}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     ports:
       - "8000:8000"
     depends_on:

@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import html
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def html_to_text(value: str) -> str:
+    text = re.sub(r"<br\s*/?>|</p>|</div>", "\n", value, flags=re.I)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace(" ", " ")
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def flex(value: Any) -> str:
@@ -422,16 +430,22 @@ class DialogueMessage:
     datetime: str
     readed: bool
     readed_opponent: bool
+    id: str = ""
+    author_id: str = ""
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "DialogueMessage":
+        # последнее сообщение в списке диалогов — from/text; сообщения внутри диалога — author_name/msg_id/html
+        html = flex(d.get("html"))
         return cls(
-            from_=flex(d.get("from")),
-            html=flex(d.get("html")),
-            text=flex(d.get("text")),
+            from_=flex(d.get("from") or d.get("author_name")),
+            html=html,
+            text=flex(d.get("text")) or html_to_text(html),
             datetime=flex(d.get("datetime")),
             readed=bool(d.get("readed")),
             readed_opponent=bool(d.get("readed_opponent")),
+            id=flex(d.get("msg_id")),
+            author_id=flex(d.get("author_id")),
         )
 
 
