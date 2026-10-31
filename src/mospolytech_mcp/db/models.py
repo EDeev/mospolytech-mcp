@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -21,7 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
 
-# ── Открытые данные (кэш) ────────────────────────────────────────────────────
+# ── Открытые данные (ФОД, ФХД-003) ───────────────────────────────────────────
 
 
 class GroupsCache(Base):
@@ -30,6 +34,49 @@ class GroupsCache(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     groups: Mapped[list[str]] = mapped_column(JSONB)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ScheduleCache(Base):
+    """Расписание группы (семестр или сессия) из открытого API, с TTL."""
+
+    __tablename__ = "schedule_cache"
+
+    group_name: Mapped[str] = mapped_column(String(50), primary_key=True)
+    is_session: Mapped[bool] = mapped_column(Boolean, primary_key=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TeacherLesson(Base):
+    """Индекс занятий по преподавателям — собирается из расписаний всех групп."""
+
+    __tablename__ = "teacher_lessons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    teacher: Mapped[str] = mapped_column(String(200), index=True)
+    group_name: Mapped[str] = mapped_column(String(50), index=True)
+    is_session: Mapped[bool] = mapped_column(Boolean)
+    # семестр: день недели 1–7; сессия: конкретная дата
+    weekday: Mapped[int | None] = mapped_column(SmallInteger)
+    lesson_date: Mapped[date | None] = mapped_column(Date)
+    pair: Mapped[int] = mapped_column(SmallInteger)
+    subject: Mapped[str] = mapped_column(String(300))
+    lesson_type: Mapped[str] = mapped_column(String(100))
+    rooms: Mapped[list[str]] = mapped_column(JSONB)
+    location: Mapped[str] = mapped_column(String(200))
+    link: Mapped[str | None] = mapped_column(Text)
+    date_from: Mapped[date] = mapped_column(Date)
+    date_to: Mapped[date] = mapped_column(Date)
+
+
+class ServiceState(Base):
+    """Служебные отметки сервера (например, когда пересобран индекс преподавателей)."""
+
+    __tablename__ = "service_state"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 # ── Пользователи и авторизация (ФЛК-001, ТЭ-002) ─────────────────────────────

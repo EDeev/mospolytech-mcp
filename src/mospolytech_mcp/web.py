@@ -76,7 +76,11 @@ def add_web_routes(mcp: MCPServer, svc: Services) -> None:
 
     @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
     async def health(_: Request) -> Response:
-        return JSONResponse({"status": "ok", "version": __version__})
+        try:
+            index = await svc.teachers.status()
+        except Exception as exc:
+            return JSONResponse({"status": "error", "error": str(exc)[:200]}, status_code=503)
+        return JSONResponse({"status": "ok", "version": __version__, "teacher_index": index})
 
     @mcp.custom_route("/login", methods=["GET", "POST"], include_in_schema=False)
     async def login_page(request: Request) -> Response:

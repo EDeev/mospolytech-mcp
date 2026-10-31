@@ -1,4 +1,4 @@
-# Настройки сервера из окружения (.env): БД, ключ шифрования, срок кэша групп, вход по умолчанию для stdio.
+# Настройки сервера из окружения (.env): БД, ключ шифрования, сроки кэша, вход по умолчанию для stdio.
 
 from __future__ import annotations
 
@@ -31,6 +31,10 @@ class Settings:
     # автоперевход в ЛК по MPU_LOGIN/MPU_PASSWORD, когда ЛК отверг сессию (личный сервер владельца, например для Davi)
     auto_relogin: bool = False
     groups_ttl: timedelta = timedelta(minutes=15)
+    schedule_ttl: timedelta = timedelta(hours=6)
+    # индекс преподавателей пересобирается не чаще, чем раз в teacher_index_ttl
+    teacher_index: bool = True
+    teacher_index_ttl: timedelta = timedelta(hours=24)
     # как часто обновлять JWT по refresh-токену (ФЛК-001)
     jwt_refresh_interval: timedelta = timedelta(minutes=30)
     public_url: str | None = None
@@ -46,6 +50,9 @@ class Settings:
             api_key=os.environ.get("MPU_API_KEY") or None,
             auto_relogin=_flag("LK_AUTO_RELOGIN", False),
             groups_ttl=_minutes("GROUPS_TTL_MINUTES", 15),
+            schedule_ttl=_minutes("SCHEDULE_TTL_MINUTES", 360),
+            teacher_index=_flag("TEACHER_INDEX", True),
+            teacher_index_ttl=_minutes("TEACHER_INDEX_TTL_MINUTES", 24 * 60),
             jwt_refresh_interval=defaults.jwt_refresh_interval,
             public_url=(os.environ.get("MCP_PUBLIC_URL") or "").rstrip("/") or None,
         )
