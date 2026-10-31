@@ -12,6 +12,10 @@ from .open_api import OpenDataClient
 DEFAULT_GROUPS_TTL = timedelta(minutes=15)
 
 
+class SourceUnavailableError(RuntimeError):
+    """Источник не ответил, а в кэше ничего нет."""
+
+
 class GroupsCacheStore:
     def __init__(
         self,

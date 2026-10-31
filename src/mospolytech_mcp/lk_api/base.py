@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import ssl
+from functools import cache
 from typing import Any
 
+import certifi
 import httpx
 
+from ._certs import GLOBALSIGN_GCC_R46_DV_TLS_CA_2025
 from .errors import (
     APIError,
     InvalidCredentialsError,
@@ -17,6 +21,17 @@ from .models import Tokens
 
 DEFAULT_LK_BASE_URL = "https://e.mospolytech.ru/old"
 DEFAULT_API_BASE_URL = "https://api.mospolytech.ru"
+# Соединение — 5 с: недоступный хост (api.mospolytech.ru с 2026-10-09 не принимает соединения) не должен держать
+# инструмент полминуты; ответ ЛК после соединения — по-прежнему до timeout.
+CONNECT_TIMEOUT = 5.0
+
+
+@cache
+def lk_ssl_context() -> ssl.SSLContext:
+    """certifi + промежуточный GlobalSign, которого сервер ЛК не присылает (см. _certs.py)."""
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    ctx.load_verify_locations(cadata=GLOBALSIGN_GCC_R46_DV_TLS_CA_2025)
+    return ctx
 
 
 class LKClientBase:
@@ -30,7 +45,7 @@ class LKClientBase:
     ) -> None:
         self._owns_http_client = http_client is None
         self._http = http_client or httpx.AsyncClient(
-            timeout=timeout, follow_redirects=True
+            timeout=httpx.Timeout(timeout, connect=CONNECT_TIMEOUT), follow_redirects=True, verify=lk_ssl_context()
         )
         self._lk_base_url = lk_base_url.rstrip("/")
         self._api_base_url = api_base_url.rstrip("/")
