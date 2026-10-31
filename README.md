@@ -1,219 +1,226 @@
 # Mospolytech MCP
 
-Наш учебный проект по дисциплине «Автоматизация процессов жизненного цикла
-программных средств» (Московский Политех, гр. 241–327). Делаем MCP-сервер,
-который даёт LLM-агенту (например, Claude) доступ к данным университета —
-и к открытому справочнику (группы, расписание), и к личному кабинету
-конкретного авторизованного пользователя (расписание, оценки, уведомления,
-платежи, заявки, сообщения).
+**Русский** · [English](README.en.md)
 
-Команда — три человека:
+[![CI](https://github.com/EDeev/mospolytech-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EDeev/mospolytech-mcp/actions/workflows/ci.yml)
+[![Deploy prod](https://github.com/EDeev/mospolytech-mcp/actions/workflows/deploy-prod.yml/badge.svg)](https://github.com/EDeev/mospolytech-mcp/actions/workflows/deploy-prod.yml)
+[![Release](https://img.shields.io/github/v/release/EDeev/mospolytech-mcp)](https://github.com/EDeev/mospolytech-mcp/releases/latest)
+[![Image](https://img.shields.io/badge/ghcr.io-edeev%2Fmospolytech--mcp-2496ED?logo=docker&logoColor=white)](https://github.com/EDeev/mospolytech-mcp/pkgs/container/mospolytech-mcp)
 
-- Деев Егор Викторович
-- Шмыговский Никита Сергеевич
-- Старков Руслан Владимирович
+MCP-сервер, через который LLM-агент (Claude Desktop, Claude Code или другой MCP-клиент) читает расписание Московского
+Политеха и личный кабинет студента: оценки, уведомления, платежи, заявки, сообщения.
 
-Официальное техническое задание, которое сдавали на лаб. №1 —
-[`docs/official/lab01-tech-spec.pdf`](docs/official/lab01-tech-spec.pdf).
-Наш рабочий план по всем 8 лабораторным (архитектура, черновая схема БД,
-открытые риски) — [`docs/working/plan.md`](docs/working/plan.md). Подробнее
-про то, как мы делим документацию на официальную и рабочую — в
-[`docs/README.md`](docs/README.md).
+**Статус:** учебный командный проект («Автоматизация процессов жизненного цикла программных средств»,
+Московский Политех, гр. 241-327, 2026), завершён · работает на стендах команды test / stage / prod
 
-## Что уже есть
+Вопрос «Какие пары у 241-327 в понедельник?» агент превращает в вызов инструмента (ответ prod-стенда):
 
-Мы собрали обе половины университетского API в этот репозиторий и
-объединили их в один объект `UniversityAPI`, чтобы MCP-серверу (и нам
-самим) не приходилось таскать два клиента порознь:
-
-```python
-from mospolytech_mcp import UniversityAPI
-
-async with UniversityAPI() as uni:
-    groups = await uni.open.get_groups()          # открытые данные, без авторизации
-    await uni.lk.login(login, password)             # а тут уже личный кабинет
-    my_schedule = await uni.lk.get_my_schedule()
+```text
+group_schedule(group="241-327", date="понедельник")
+{
+  "group": "241-327", "kind": "семестр", "date": "2026-11-02", "weekday": "понедельник",
+  "lessons": [
+    {"pair": 3, "time": "12:20–13:50", "subject": "Проектная деятельность", "type": "Практика",
+     "location": "ПД", "period": "01.09.2026–03.01.2027", "link": "https://docs.google.com/…"}
+  ],
+  "source": "кэш", "fetched_at": "2026-10-31T18:25:43+00:00"
+}
 ```
 
-- **`open_api`** — открытые справочные данные университета. По ТЗ (ТПО-004)
-  здесь используется готовая библиотека
-  [mospolytech_api](https://github.com/r4nd0lph-c/mospolytech_api), а не
-  наша реализация — мы завендорили её код как есть в `open_api/_vendor/` и
-  сверху накрутили тонкую async-обёртку (`asyncio.to_thread`), чтобы она не
-  блокировала event loop рядом с остальным асинхронным кодом.
-- **`lk_api`** — личный кабинет. Тут по ТЗ (ТПО-005) наоборот: логику
-  авторизации и работы с API переносим с существующей Go-библиотеки
-  [MPU_LK_API](https://github.com/GODIMONGO/MPU_LK_API) на Python, своими
-  руками. Сделали: логин/логаут/обновление токенов (обе системы — легаси
-  token и JWT+refresh), расписание, успеваемость, платежи и договоры,
-  заявки, уведомления и объявления, диалоги и (осторожно,
-  неподтверждено — см. `docs/working/plan.md`) отправку сообщений.
+**Стек:** Python 3.14 · MCP SDK · SQLAlchemy 2 (async) · Alembic · PostgreSQL 17 · Docker · GitHub Actions
 
-Сам MCP-сервер (`server.py`) уже запускается и отвечает на первый
-инструмент — `list_groups` (ФОД-001), через полный стек: протокол MCP →
-`UniversityAPI.open` → кэш в PostgreSQL (`cache.py` + `db/`, миграции
-Alembic в `alembic/`). Живьём проверяли: 592 группы забрались с
-rasp.dmami.ru, записались в БД, второй вызов уже идёт из кэша. Остальные
-инструменты (ФЛК-*, оставшиеся ФХД) дописываем по плану в
-`docs/working/plan.md`, раздел 3.1.
+## Возможности
 
-## Требования
+21 инструмент, подробно — [`docs/tools.md`](docs/tools.md).
 
-- Python 3.14 (у нас работает через `py -3.14`)
-- Доступ к PostgreSQL — свой пользователь `mospolytech_mcp` на общем сервере
-  команды (не `postgres`/admin), спросите данные в чате, если не сохранили
+- **Открытые данные, без входа:** список групп, расписание группы и преподавателя (семестр или сессия,
+  на день — «завтра», «пятница», «08.10»). Расписание преподавателя сервер собирает сам из расписаний всех
+  групп: у источника такого запроса нет.
+- **Вход в личный кабинет:** `lk_login` или страница `/login` — пароль не сохраняется, токены ЛК лежат в БД
+  зашифрованными, клиент получает персональный ключ `mpk_…`.
+- **Личный кабинет:** профиль, личное расписание, успеваемость, уведомления с пометкой новых, платежи,
+  заявки, диалоги, отправка сообщений.
+- **История:** что менялось в оценках, платежах и заявках между проверками.
+- **Отслеживаемые группы:** чужие группы, расписание которых видно рядом со своим.
+- **Устойчивость:** если ЛК или rasp.dmami.ru не отвечает, отдаются данные из кэша с пометкой `stale`;
+  каждое обращение к ЛК пишется в журнал; `/health` — для мониторинга.
 
 ## Быстрый старт
 
-Если стоит GNU Make (на Windows — `choco install make`), всё поднимается
-одной командой:
+Готовый образ из GitHub Container Registry и PostgreSQL рядом. Нужны Docker и docker compose v2.
 
-```powershell
-make up
+```bash
+curl -O https://raw.githubusercontent.com/EDeev/mospolytech-mcp/main/deploy/docker-compose.yaml
+cat > .env <<EOF
+POSTGRES_DB=mospolytech_mcp
+POSTGRES_USER=mospolytech_mcp
+POSTGRES_PASSWORD=$(openssl rand -hex 16)
+MCP_SECRET_KEY=$(docker run --rm ghcr.io/edeev/mospolytech-mcp:1.0.0 python -m mospolytech_mcp.crypto)
+APP_TAG=1.0.0
+EOF
+docker compose up -d
+curl http://127.0.0.1:8000/health
 ```
 
-Она создаёт `.venv`, ставит зависимости, копирует `.env.example` в `.env`,
-накатывает миграции и запускает сервер. На свежем клоне первый запуск
-остановится с просьбой вписать `DATABASE_URL` в `.env` — впишите и
-запустите `make up` ещё раз. Остальные команды (`make test`, `make migrate`,
-`make run`, `make check-lk`, `make clean`) — в `make help`. Работает из
-PowerShell, cmd и Git Bash, а также на Linux/macOS.
+Сервис `migrate` накатывает миграции и завершается, после него стартует сервер:
+`http://<адрес>:8000/mcp` — MCP, `http://<адрес>:8000/login` — вход в ЛК и готовые настройки клиента.
+Теги образа: `1.0.0` и `latest` — релизы, `prod` — то, что сейчас на prod, `dev` — ветка `dev`.
 
-Ниже — то же самое руками, без make.
+Из исходников, со сборкой образа: `cp .env.example .env`, вписать `MCP_SECRET_KEY`, `make docker-up`.
 
-## Установка
+## Подключение к MCP-клиенту
+
+Откройте `http://<адрес>:8000/login`, войдите логином и паролем ЛК — страница выдаст ключ `mpk_…` и пример
+настроек. Пароль идёт напрямую на сервер, LLM его не видит. Для Claude Code:
+
+```bash
+claude mcp add --transport http mospolytech http://<адрес>:8000/mcp --header "Authorization: Bearer mpk_…"
+```
+
+Открытые инструменты (группы, расписания) работают и без ключа. В Postman: New → MCP, HTTP,
+`http://<адрес>:8000/mcp`.
+
+Локально по stdio, без HTTP (после установки без Docker, см. ниже) — например, Claude Desktop,
+`claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mospolytech": { "command": "<путь к проекту>/.venv/Scripts/mospolytech-mcp" }
+  }
+}
+```
+
+Настройки сервер берёт из `.env` в корне проекта; чтобы инструменты ЛК работали без `lk_login`, впишите туда
+`MPU_API_KEY` (ключ с `/login`) или `MPU_LOGIN`/`MPU_PASSWORD`.
+
+## Установка без Docker
+
+Нужны Python 3.14 и PostgreSQL. С GNU Make (на Windows — `choco install make`):
+
+```bash
+make up          # venv, зависимости, .env, миграции, сервер по stdio
+make run-http    # сервер по HTTP на 0.0.0.0:8000
+make help        # остальные команды
+```
+
+На свежем клоне `make up` остановится и попросит вписать `DATABASE_URL` в `.env`; ключ шифрования —
+`make secret-key`. То же без make:
 
 ```powershell
 py -3.14 -m venv .venv
 .venv\Scripts\pip install -e ".[dev]"
-copy .env.example .env
-# впишите DATABASE_URL (и MPU_LOGIN/MPU_PASSWORD, если нужен check_lk_api.py)
+copy .env.example .env      # вписать DATABASE_URL и MCP_SECRET_KEY
 .venv\Scripts\alembic upgrade head
+.venv\Scripts\mospolytech-mcp --http --host 0.0.0.0 --port 8000
 ```
 
-## Тесты
+## Конфигурация
 
-Всё, что не требует реального логина, покрыто офлайн-тестами — сеть не
-трогаем, HTTP подменяем (`httpx.MockTransport` для `lk_api`, подмена
-`requests.get` для `open_api`):
+Переменные окружения (или `.env` в корне), полный список с комментариями — [`.env.example`](.env.example).
 
-```powershell
-.venv\Scripts\python -m pytest -q
-```
-
-## Проверка на реальном аккаунте
-
-`open_api` не требует авторизации, поэтому его можно проверить вживую хоть
-прямо сейчас (реальный запрос к rasp.dmami.ru, без секретов):
-
-```powershell
-.venv\Scripts\python -c "import asyncio; from mospolytech_mcp.open_api import OpenDataClient; asyncio.run(OpenDataClient().get_groups())"
-```
-
-Для `lk_api` нужен свой логин/пароль от e.mospolytech.ru — впишите
-MPU_LOGIN и MPU_PASSWORD в свой `.env`, дальше `scripts/check_lk_api.py`
-логинится и читает профиль, расписание, успеваемость, уведомления,
-платежи, заявки и диалоги (ничего не меняет):
-
-```powershell
-.venv\Scripts\python scripts\check_lk_api.py
-```
-
-Пароль используется один раз при вызове `login()` и нигде не сохраняется.
-`.env` в `.gitignore`, в репозиторий не попадёт.
-
-## Запуск сервера
-
-```powershell
-.venv\Scripts\python -m mospolytech_mcp.server
-```
-
-Поднимается на stdio-транспорте — так подключается локальный MCP-клиент
-(например, Claude Desktop/Code). Инструменты:
-
-| Инструмент | Что делает |
+| Переменная | Что задаёт |
 |---|---|
-| `list_groups` | список групп университета (ФОД-001), кэш в БД на 15 минут |
-| `add_tracked_group(user, group)` | добавить группу в отслеживаемые пользователя; группа сверяется со списком `list_groups`, повторное добавление ничего не дублирует |
-| `list_tracked_groups(user)` | отслеживаемые группы пользователя в порядке добавления |
-| `remove_tracked_group(user, group)` | убрать группу из отслеживаемых |
+| `DATABASE_URL` | PostgreSQL, `postgresql+psycopg://user:pass@host:5432/db` |
+| `MCP_SECRET_KEY` | ключ Fernet для токенов ЛК в БД — `python -m mospolytech_mcp.crypto`; сменили — все входят заново |
+| `MCP_PUBLIC_URL` | адрес сервера снаружи — для подсказки с настройками на `/login` |
+| `MPU_API_KEY` или `MPU_LOGIN` + `MPU_PASSWORD` | вход по умолчанию в режиме stdio (один пользователь) |
+| `LK_AUTO_RELOGIN` | `1` — личный сервер одного владельца: при отказе ЛК сервер сам входит заново |
+| `GROUPS_TTL_MINUTES`, `SCHEDULE_TTL_MINUTES`, `TEACHER_INDEX_TTL_MINUTES` | сроки кэша: 15 мин, 6 ч, 24 ч |
+| `TEACHER_INDEX` | `0` — не собирать индекс преподавателей в фоне |
+| `TEST_DATABASE_URL` | БД для интеграционных тестов (создают и удаляют временные схемы) |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `APP_TAG` | docker compose |
 
-Отслеживаемые группы лежат в таблице `tracked_groups`. Авторизации на
-сервере пока нет, так что `user` — просто логин, который передаёт клиент.
+> [!IMPORTANT]
+> - `send_message` и `send_group_message` отправляют настоящие сообщения от имени студента;
+>   `send_group_message` получит вся учебная группа. Отправка группе вживую не проверялась.
+> - API личного кабинета неофициальный (перенесён с [MPU_LK_API](https://github.com/GODIMONGO/MPU_LK_API)):
+>   если университет его поменяет, инструменты ЛК перестанут работать, а открытые данные — нет.
+> - Вход по `/login` и ключи `mpk_…` защищают данные пользователя, но не сам сервер: без обратного прокси
+>   с HTTPS его не стоит открывать в интернет — пароль ЛК пойдёт по HTTP открытым текстом.
 
-### HTTP-режим
+## Как устроено
 
-Если сервер крутится в VM или на другой машине, stdio не подходит —
-есть HTTP-режим (streamable HTTP, эндпоинт `/mcp`):
+```
+MCP-клиент (LLM) ──MCP──▶ server.py ── инструменты, ошибки → понятный ответ
+                              │
+             ┌────────────────┼─────────────────────────┐
+             ▼                ▼                         ▼
+      открытые данные     личный кабинет            хранение
+      cache.py            auth.py (вход, токены,    db/ + alembic/
+      teachers.py           журнал обращений)       PostgreSQL
+      open_api/ (вендор)  personal.py (кэш, история)
+                          lk_api/ (порт MPU_LK_API)
+```
+
+- **`open_api/`** — открытые данные rasp.dmami.ru. По ТЗ (ТПО-004) — готовая библиотека
+  [mospolytech_api](https://github.com/r4nd0lph-c/mospolytech_api), завендоренная как есть, сверху
+  async-обёртка.
+- **`lk_api/`** — личный кабинет: по ТЗ (ТПО-005) авторизация и API перенесены с Go-библиотеки
+  [MPU_LK_API](https://github.com/GODIMONGO/MPU_LK_API) на Python.
+- **`cache.py`, `teachers.py`** — кэш справочных данных с откатом на него и индекс преподавателей.
+- **`auth.py`, `identity.py`, `crypto.py`** — вход, шифрование токенов, ключи `mpk_…`, журнал обращений.
+- **`personal.py`, `views.py`** — персональные данные: кэш, история изменений, уведомления без дублей,
+  ответы в удобном для LLM виде.
+
+Документация: [`docs/tools.md`](docs/tools.md) — инструменты, [`docs/db-schema.md`](docs/db-schema.md) —
+схема БД и миграции, [`db/schema/schema.sql`](db/schema/schema.sql) — снимок схемы,
+[`docs/official/lab01-tech-spec.pdf`](docs/official/lab01-tech-spec.pdf) — техническое задание (ЛР1),
+[`docs/README.md`](docs/README.md) — что где лежит.
+
+## Развёртывание
+
+Три стенда — виртуальные машины Ubuntu (VMware): test, stage, prod. Работа идёт по GitFlow:
+`feature/*` → pull request в `dev` → `dev` → `main`. Ветки `dev` и `main` защищены: только через pull
+request с одобрением другого участника и зелёной сборкой.
+
+- **CI** ([`ci.yml`](.github/workflows/ci.yml)) на каждый push: ruff, bandit, gitleaks, squawk (SQL
+  миграций) → сборка образа → тесты с PostgreSQL → публикация в GHCR (`dev`, `prod`, по SHA).
+- **stage** — после push в `dev`: self-hosted runner на ВМ test накатывает миграции на TEST-стенд, снимает
+  схему, затем мигрирует и обновляет stage и проверяет, что схемы совпали, а `/health` отвечает.
+- **prod** ([`deploy-prod.yml`](.github/workflows/deploy-prod.yml)) — после CI на `main` и ручного
+  одобрения в environment `production`: резервная копия БД (`scripts/backup_db.sh`), сверка схемы с
+  stage, миграция, обновление, `/health`, повторная сверка.
+- **Релиз** ([`release.yml`](.github/workflows/release.yml)) — на тег `v*`: пакет (wheel, sdist) в
+  GitHub Releases и образ с тегом версии и `latest`.
+
+Миграции рассчитаны на работающую БД: индексы — `CONCURRENTLY`, ограничения — `NOT VALID` и отдельный
+`VALIDATE`, изменение столбцов — по схеме expand/contract (подробнее — [`docs/db-schema.md`](docs/db-schema.md)).
+
+## Разработка
 
 ```bash
-make run-http            # 0.0.0.0:8000
-make run-http PORT=9000  # HOST и PORT можно переопределить
+make test        # все тесты; интеграционные — если в .env задан TEST_DATABASE_URL
+make test-unit   # только офлайн, без БД и сети
+make cov         # с отчётом о покрытии
+ruff check .
 ```
 
-Без make: `python -m mospolytech_mcp.server --http --host 0.0.0.0 --port 8000`.
+Офлайн-тесты подменяют HTTP (`httpx.MockTransport` для ЛК, подмена `requests` для открытого API).
+Интеграционные поднимают схему миграциями в отдельной схеме PostgreSQL и проверяют, что миграции
+накатываются с нуля, откатываются и совпадают с моделями. Проверка ЛК на реальном аккаунте —
+`make check-lk` (только чтение, нужны `MPU_LOGIN`/`MPU_PASSWORD`), нагрузочная —
+`python scripts/load_test.py http://127.0.0.1:8000/mcp --rps 10 --seconds 30`.
 
-В Postman: New → MCP, транспорт HTTP, URL `http://<адрес VM>:8000/mcp`,
-Connect — в списке инструментов появится `list_groups`, его можно вызвать
-прямо оттуда. Авторизации на сервере нет, так что наружу (`0.0.0.0`)
-открывать только на тестовой машине.
+Коммиты — Conventional Commits, на русском. Изменения схемы БД — только новой миграцией вместе с
+обновлённым `db/schema/schema.sql`.
 
-## Docker
+## Лицензия
 
-Тот же сервер, но в контейнере и со своей PostgreSQL рядом — так он живёт
-на ВМ начиная с ЛР3. Нужны Docker и docker compose v2, `.env` и venv не
-нужны:
+Учебный проект («Автоматизация процессов жизненного цикла программных средств», Московский Политех,
+2026/2027 учебный год) — код доступен для изучения, отдельной лицензии нет. Вендор
+[mospolytech_api](https://github.com/r4nd0lph-c/mospolytech_api) в `src/mospolytech_mcp/open_api/_vendor/` —
+под своей лицензией Apache 2.0 (`LICENSE.md`, `NOTICE.md` там же).
 
-```bash
-make docker-up      
-make docker-logs   
-make docker-down    
-```
+## Авторы
 
-Что происходит:
+- **Деев Егор** — [GitHub](https://github.com/EDeev)
+- **Шмыговский Никита** — [GitHub](https://github.com/Bulbak1)
+- **Старков Руслан** — [GitHub](https://github.com/RayStar-k)
 
-- `Dockerfile` собирает образ из исходников: `python:3.14-slim`, отдельным
-  слоем зависимости из `pyproject.toml`, потом сам пакет. При старте
-  контейнер накатывает миграции (`alembic upgrade head`) и запускает сервер
-  в HTTP-режиме на `0.0.0.0:8000` — снаружи это `http://<адрес>:8000/mcp`.
-- `docker-compose.yaml` поднимает два сервиса: `db` (`postgres:17-alpine`)
-  и `mcp` (наш образ). Сервер стартует только после того, как БД ответила на
-  `pg_isready`, и ходит к ней по имени `db` внутри сети compose — наружу
-  порт PostgreSQL не выставлен. `DATABASE_URL` для контейнера compose
-  собирает сам из `POSTGRES_*`; `.env` в образ не попадает (`.dockerignore`).
-- Файлы БД лежат в volume `pgdata`, поэтому `docker compose down` и
-  повторный `up` данные не теряют. Снести вместе с данными —
-  `docker compose down -v`.
+---
 
-Логин, пароль и имя БД по умолчанию `mospolytech_mcp`; переопределяются через
-`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` в `.env` — compose читает
-его сам, а `DATABASE_URL` оттуда для контейнера не используется.
-
-Посмотреть, что данные реально легли в контейнерную БД (это же удобно
-показывать после рестарта):
-
-```bash
-docker compose exec db psql -U mospolytech_mcp -c "select id, jsonb_array_length(groups), fetched_at from groups_cache"
-docker compose exec db psql -U mospolytech_mcp -c "select * from tracked_groups"
-```
-
-## Структура репозитория
-
-```
-docs/
-  official/       — официальные документы для сдачи (ТЗ и т.д.), PDF, не правим задним числом
-  working/        — наш рабочий план, заметки, черновики — правим постоянно
-  sdo/            — методички по всем 8 лабораторным и справочные ГОСТ/IEEE из СДО
-src/mospolytech_mcp/
-  api.py          — UniversityAPI, точка входа: держит open_api + lk_api вместе
-  server.py       — сам MCP-сервер (регистрация tools)
-  cache.py        — кэширующие обёртки над UniversityAPI, пишут в БД (ФХД-003)
-  open_api/       — открытые данные (вендор mospolytech_api + наша async-обёртка)
-  lk_api/         — личный кабинет (наш порт MPU_LK_API с Go на Python)
-  db/             — модели SQLAlchemy (схема версионируется в alembic/)
-alembic/          — миграции БД (alembic upgrade head накатывает схему)
-tests/            — офлайн-тесты (pytest, без сети)
-scripts/          — ручные проверочные скрипты (против реального ЛК)
-Dockerfile        — образ сервера (сборка из исходников, миграции + HTTP-режим на старте)
-docker-compose.yaml — сервер + PostgreSQL с volume для данных
-```
+<div align="center">
+  <sub>⭐ Если проект оказался полезным, поставьте звёздочку на GitHub!</sub>
+  <p><sub>Сделано с ❤️ студентами Московского Политеха, гр. 241-327</sub></p>
+</div>
