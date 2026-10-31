@@ -149,11 +149,16 @@ class LKClientBase:
     ) -> Any:
         return await self._lk_request("POST", query, data=form)
 
+    async def lk_post_multipart(self, query: str, fields: dict[str, str]) -> Any:
+        """POST multipart/form-data — так фронтенд ЛК отправляет сообщения."""
+        return await self._lk_request("POST", query, files={k: (None, v) for k, v in fields.items()})
+
     async def _lk_request(
         self,
         method: str,
         query: str,
         data: dict[str, str] | None = None,
+        files: dict[str, Any] | None = None,
     ) -> Any:
         if not self.tokens.token:
             raise NotAuthenticatedError()
@@ -163,7 +168,7 @@ class LKClientBase:
             url += query + "&"
         url += "token=" + self.tokens.token
 
-        resp = await self._http.request(method, url, data=data)
+        resp = await self._http.request(method, url, data=data, files=files)
         if resp.status_code != 200:
             raise APIError("lk_api", resp.status_code, resp.text)
 

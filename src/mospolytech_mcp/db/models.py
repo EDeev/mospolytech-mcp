@@ -140,6 +140,86 @@ class LKAccessLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# ── Персональные данные (ФХД-001, ФХД-002) ───────────────────────────────────
+
+
+class PersonalCache(Base):
+    """Последний полученный срез персональных данных пользователя — для TTL и отката (ТН-001)."""
+
+    __tablename__ = "personal_cache"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    kind: Mapped[str] = mapped_column(String(50), primary_key=True)
+    scope: Mapped[str] = mapped_column(String(50), primary_key=True, default="")
+    data: Mapped[Any] = mapped_column(JSONB)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class StudentProfile(Base):
+    """Полезные поля профиля ЛК отдельными столбцами (2026-10-09) — обновляются при каждом получении профиля из ЛК.
+
+    Зачем: группа для личного расписания без входа в ЛК (my_schedule → открытое расписание группы), запросы и
+    отчёты по профилю без разбора JSON. Персональные данные сверх нужного (телефон, дата рождения, финансирование,
+    приказы, аватар, пропуск) сюда не попадают — полный срез остаётся только в personal_cache."""
+
+    __tablename__ = "student_profiles"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    surname: Mapped[str | None] = mapped_column(String(100))
+    name: Mapped[str | None] = mapped_column(String(100))
+    patronymic: Mapped[str | None] = mapped_column(String(100))
+    group_name: Mapped[str | None] = mapped_column(String(50))
+    course: Mapped[int | None] = mapped_column(SmallInteger)
+    faculty: Mapped[str | None] = mapped_column(Text)
+    specialty: Mapped[str | None] = mapped_column(Text)
+    specialty_code: Mapped[str | None] = mapped_column(String(50))
+    specialization: Mapped[str | None] = mapped_column(Text)
+    education_form: Mapped[str | None] = mapped_column(String(50))
+    degree_level: Mapped[str | None] = mapped_column(String(50))
+    degree_length: Mapped[str | None] = mapped_column(String(50))
+    enter_year: Mapped[str | None] = mapped_column(String(20))  # в ЛК — строка («2024/2025»)
+    status: Mapped[str | None] = mapped_column(String(100))
+    email: Mapped[str | None] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PersonalHistory(Base):
+    """История изменений (успеваемость, платежи, заявки): новая строка — только если данные изменились."""
+
+    __tablename__ = "personal_history"
+    __table_args__ = (
+        Index("ix_personal_history_lookup", "user_id", "kind", "scope", "captured_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(50))
+    scope: Mapped[str] = mapped_column(String(50), default="")
+    data: Mapped[Any] = mapped_column(JSONB)
+    data_hash: Mapped[str] = mapped_column(String(64))
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Notification(Base):
+    """Уведомления и объявления пользователя, без дублей по внешнему id."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (UniqueConstraint("user_id", "kind", "external_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    external_id: Mapped[str] = mapped_column(String(100))
+    title: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    published: Mapped[str] = mapped_column(String(50))
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 # ── Отслеживаемые группы ─────────────────────────────────────────────────────
 
 
