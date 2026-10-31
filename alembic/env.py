@@ -5,9 +5,6 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -24,8 +21,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-if database_url := os.environ.get("DATABASE_URL"):
-    config.set_main_option("sqlalchemy.url", database_url)
+# адрес, переданный программно (тесты), важнее DATABASE_URL из окружения
+if database_url := config.attributes.get("database_url") or os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
@@ -62,7 +60,9 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    # psycopg в async-режиме не работает с ProactorEventLoop (по умолчанию на Windows)
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
+    asyncio.run(run_async_migrations(), loop_factory=loop_factory)
 
 
 if context.is_offline_mode():

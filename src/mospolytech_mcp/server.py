@@ -1,4 +1,5 @@
-# MCP-сервер mospolytech-mcp: открытые данные (список групп), вход в личный кабинет (ФЛК-001), отслеживаемые группы.
+# MCP-сервер mospolytech-mcp: открытые данные (группы, расписания групп и преподавателей), вход в личный кабинет
+# (ФЛК-001), отслеживаемые группы.
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import contextlib
 import functools
 import logging
 import sys
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,13 +34,15 @@ from .auth import (
     NoSessionError,
     SessionExpiredError,
 )
-from .cache import GroupsCacheStore, SourceUnavailableError
+from .cache import GroupsCacheStore, ScheduleCacheStore, ScheduleNotFoundError, SourceUnavailableError
 from .crypto import SecretKeyMissingError, TokenCipher
 from .db import make_engine, make_sessionmaker
 from .identity import Identity, InvalidKeyError, Mode, NotLoggedInError
 from .lk_api import LKClient, LKError
 from .open_api import OpenDataClient
+from .schedule_format import DateParseError, format_schedule, merge_by_groups, parse_date
 from .settings import Settings
+from .teachers import IndexNotReadyError, TeacherIndex
 from .tracked import TrackedGroupsStore, UnknownGroupError
 from .web import add_web_routes
 
@@ -47,13 +50,14 @@ log = logging.getLogger(__name__)
 
 INSTRUCTIONS = """\
 Сервер даёт доступ к данным Московского Политеха.
-Открытые данные (без входа): list_groups.
+Открытые данные (без входа): list_groups, group_schedule, teacher_schedule.
 Личный кабинет: сначала lk_login(login, password) — сервер вернёт персональный ключ mpk_…; его стоит
 сохранить в настройках MCP-клиента (заголовок Authorization: Bearer <ключ>), тогда входить заново не нужно.
-Отслеживаемые группы (add_tracked_group, list_tracked_groups, remove_tracked_group) — после входа.
+Даты в инструментах расписания понимают «сегодня», «завтра», день недели, 2026-10-08 и 08.10.2026.
 """
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=True)
+MAX_TEACHER_MATCHES = 20
 
 
 @dataclass
@@ -63,6 +67,8 @@ class Services:
     auth: AuthService
     gateway: LKGateway
     groups: GroupsCacheStore
+    schedules: ScheduleCacheStore
+    teachers: TeacherIndex
     tracked: TrackedGroupsStore
 
 
@@ -88,6 +94,7 @@ def build_services(
         refresh_interval=settings.jwt_refresh_interval, auth=auth, relogin_credentials=credentials,
     )
     groups = GroupsCacheStore(open_client, sessionmaker, ttl=settings.groups_ttl)
+    schedules = ScheduleCacheStore(open_client, sessionmaker, ttl=settings.schedule_ttl)
     autologin = (settings.lk_login, settings.lk_password) if settings.lk_login and settings.lk_password else None
     return Services(
         settings=settings,
@@ -95,6 +102,8 @@ def build_services(
         auth=auth,
         gateway=gateway,
         groups=groups,
+        schedules=schedules,
+        teachers=TeacherIndex(open_client, sessionmaker, schedules, ttl=settings.teacher_index_ttl),
         tracked=TrackedGroupsStore(sessionmaker, groups.get_groups),
     )
 
@@ -112,7 +121,10 @@ def friendly_errors() -> Iterator[None]:
         NoSessionError,
         SessionExpiredError,
         AuthError,
+        ScheduleNotFoundError,
         SourceUnavailableError,
+        IndexNotReadyError,
+        DateParseError,
         UnknownGroupError,
         SecretKeyMissingError,
     ) as exc:
@@ -127,17 +139,31 @@ def friendly_errors() -> Iterator[None]:
 
 
 def create_server(svc: Services) -> MCPServer:
+    @contextlib.asynccontextmanager
+    async def lifespan(_: MCPServer) -> AsyncIterator[None]:
+        task = None
+        if svc.settings.teacher_index:
+            task = asyncio.create_task(svc.teachers.run_forever())
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
     mcp = MCPServer(
         name="mospolytech-mcp",
         title="Mospolytech MCP",
         version=__version__,
         instructions=INSTRUCTIONS,
+        lifespan=lifespan,
     )
 
     async def user(ctx: Context) -> int:
         return await svc.identity.require(ctx)
 
-    # ── Открытые данные (ФОД-001, без входа и без журнала — ТЭ-001) ─────────
+    # ── Открытые данные (ФОД-001…003, без входа и без журнала — ТЭ-001) ──────
 
     @mcp.tool(annotations=READ_ONLY)
     async def list_groups(query: str = "") -> dict[str, Any]:
@@ -151,6 +177,69 @@ def create_server(svc: Services) -> MCPServer:
         if needle:
             groups = [g for g in groups if needle in g.lower()]
         return {"count": len(groups), "groups": groups}
+
+    async def _check_group(group: str) -> str:
+        group = group.strip()
+        try:
+            known = await svc.groups.get_groups()
+        except Exception:
+            return group  # список групп недоступен — пусть решает источник расписания
+        if group in known:
+            return group
+        lowered = {g.lower(): g for g in known}
+        if group.lower() in lowered:
+            return lowered[group.lower()]
+        similar = [g for g in known if g.startswith(group[:4])][:10]
+        hint = f" Похожие: {', '.join(similar)}." if similar else ""
+        raise ToolError(f"группы {group!r} нет в списке групп университета.{hint}")
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def group_schedule(group: str, session: bool = False, date: str = "") -> dict[str, Any]:
+        """Расписание учебной группы (ФОД-002): семестр или сессия (session=true).
+
+        date — день: «сегодня», «завтра», «пятница», 2026-10-08; пусто — всё расписание по дням недели.
+        """
+        with friendly_errors():
+            on_date = parse_date(date)
+            group = await _check_group(group)
+            cached = await svc.schedules.get(group, is_session=session)
+        data = cached.data
+        period = data.get("period") or ["", ""]
+        return {
+            "group": group,
+            "kind": "сессия" if session else "семестр",
+            "period": "–".join(p for p in period if p),
+            "evening": data.get("evening", False),
+            **format_schedule(data["lessons"], is_session=session, on_date=on_date),
+            **cached.meta(),
+        }
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def teacher_schedule(teacher: str, session: bool = False, date: str = "") -> dict[str, Any]:
+        """Расписание преподавателя по ФИО или его части (ФОД-003): «Васильев», «Васильев Д. Б.».
+
+        Если подходит несколько преподавателей — вернёт список, чтобы уточнить. date — как в group_schedule.
+        """
+        with friendly_errors():
+            on_date = parse_date(date)
+            matches = await svc.teachers.find(teacher)
+            if not matches:
+                raise ToolError(f"преподаватель {teacher!r} не найден в расписании")
+            if len(matches) > 1:
+                return {
+                    "matches": matches[:MAX_TEACHER_MATCHES],
+                    "total": len(matches),
+                    "note": "подходит несколько преподавателей — уточните ФИО",
+                }
+            name = matches[0]
+            lessons = merge_by_groups(await svc.teachers.lessons(name, is_session=session))
+            state = await svc.teachers.status() or {}
+        return {
+            "teacher": name,
+            "kind": "сессия" if session else "семестр",
+            **format_schedule(lessons, is_session=session, on_date=on_date),
+            "index_built_at": state.get("built_at"),
+        }
 
     # ── Вход и выход (ФЛК-001) ──────────────────────────────────────────────
 
@@ -216,6 +305,22 @@ def create_server(svc: Services) -> MCPServer:
         with friendly_errors():
             removed = await svc.tracked.remove(await _login_of(ctx), group)
         return f"группа {group} больше не отслеживается" if removed else f"группа {group} не была в отслеживаемых"
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def tracked_schedule(ctx: Context, date: str = "сегодня") -> dict[str, Any]:
+        """Расписание всех отслеживаемых групп на один день (по умолчанию — на сегодня)."""
+        with friendly_errors():
+            on_date = parse_date(date) or parse_date("сегодня")
+            groups = await svc.tracked.list(await _login_of(ctx))
+        result = []
+        for group in groups:
+            try:
+                with friendly_errors():
+                    cached = await svc.schedules.get(group, is_session=False)
+                result.append({"group": group, **format_schedule(cached.data["lessons"], is_session=False, on_date=on_date)})
+            except ToolError as exc:
+                result.append({"group": group, "error": str(exc)})
+        return {"date": on_date.isoformat(), "groups": result}
 
     add_web_routes(mcp, svc)
     return mcp
