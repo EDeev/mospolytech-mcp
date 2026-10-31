@@ -10,7 +10,8 @@ from mcp import Client
 from sqlalchemy import func, select, update
 
 from mospolytech_mcp.db import (
-    ApiKey, LKAccessLog, Notification, PersonalCache, PersonalHistory, StudentProfile, User, UserSession,
+    ApiKey, LKAccessLog, Notification, PersonalCache, PersonalHistory, StudentProfile, TrackedGroup, User,
+    UserSession,
 )
 from mospolytech_mcp.server import create_server
 
@@ -255,7 +256,7 @@ async def test_bad_request_does_not_drop_session(services, sessionmaker, fake_lk
         assert await session.scalar(select(func.count()).select_from(UserSession)) == 1
 
 
-async def test_tracked_groups_of_logged_in_user(services):
+async def test_tracked_groups_of_logged_in_user(services, sessionmaker):
     async with connect(services) as client:
         await login(client)
         assert await call(client, "add_tracked_group", group="241-328") == "группа 241-328 добавлена в отслеживаемые"
@@ -263,6 +264,10 @@ async def test_tracked_groups_of_logged_in_user(services):
         with pytest.raises(ToolFailed, match="нет в списке"):
             await call(client, "add_tracked_group", group="999-999")
         assert await call(client, "list_tracked_groups") == ["241-328"]
+        async with sessionmaker() as session:
+            user_id = await session.scalar(select(User.id).where(User.login == FakeLK.LOGIN))
+            rows = (await session.execute(select(TrackedGroup.user_id, TrackedGroup.user_login))).all()
+        assert rows == [(user_id, FakeLK.LOGIN)]  # привязка — по id пользователя, логин — для совместимости
         day = await call(client, "tracked_schedule", date="2026-09-01")  # вторник
         assert day["groups"][0]["lessons"][0]["subject"] == "Разработка мобильных приложений"
         assert await call(client, "remove_tracked_group", group="241-328") == "группа 241-328 больше не отслеживается"

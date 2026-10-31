@@ -18,10 +18,10 @@ async def _known():
 async def test_add_rejects_unknown_group():
     store = TrackedGroupsStore(_no_db, _known)
     with pytest.raises(UnknownGroupError, match="999-999"):
-        await store.add("r.v.starkov", "999-999")
+        await store.add(1, "r.v.starkov", "999-999")
 
 
 async def test_add_rejects_unknown_group_after_strip():
     store = TrackedGroupsStore(_no_db, _known)
     with pytest.raises(UnknownGroupError):
-        await store.add("r.v.starkov", " 241-328 ")
+        await store.add(1, "r.v.starkov", " 241-328 ")

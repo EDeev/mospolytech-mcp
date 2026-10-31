@@ -185,7 +185,9 @@ CREATE TABLE public.tracked_groups (
     id integer NOT NULL,
     user_login character varying(100) NOT NULL,
     group_name character varying(50) NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    user_id integer NOT NULL,
+    CONSTRAINT ck_tracked_groups_user_id_not_null CHECK ((user_id IS NOT NULL))
 );
 
 CREATE SEQUENCE public.tracked_groups_id_seq
@@ -288,6 +290,9 @@ ALTER TABLE ONLY public.tracked_groups
 ALTER TABLE ONLY public.tracked_groups
     ADD CONSTRAINT tracked_groups_user_login_group_name_key UNIQUE (user_login, group_name);
 
+ALTER TABLE ONLY public.tracked_groups
+    ADD CONSTRAINT uq_tracked_groups_user_id_group_name UNIQUE (user_id, group_name);
+
 ALTER TABLE ONLY public.user_sessions
     ADD CONSTRAINT user_sessions_pkey PRIMARY KEY (user_id);
 
@@ -316,6 +321,9 @@ CREATE INDEX ix_tracked_groups_user_login ON public.tracked_groups USING btree (
 
 ALTER TABLE ONLY public.api_keys
     ADD CONSTRAINT api_keys_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.tracked_groups
+    ADD CONSTRAINT fk_tracked_groups_user_id_users FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.lk_access_log
     ADD CONSTRAINT lk_access_log_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;

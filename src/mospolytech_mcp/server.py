@@ -528,31 +528,33 @@ def create_server(svc: Services) -> MCPServer:
 
     # ── Отслеживаемые группы ────────────────────────────────────────────────
 
-    async def _login_of(ctx: Context) -> str:
-        found = await svc.auth.get_user(await user(ctx))
+    async def _tracked_owner(ctx: Context) -> tuple[int, str]:
+        """id и логин вошедшего пользователя: группы привязаны по id, логин пишется для совместимости."""
+        user_id = await user(ctx)
+        found = await svc.auth.get_user(user_id)
         if found is None:
             raise NotLoggedInError()
-        return found.login
+        return user_id, found.login
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True))
     async def add_tracked_group(ctx: Context, group: str) -> str:
         """Добавить группу в отслеживаемые (например, чужую группу, у которой бывают общие пары)."""
         with friendly_errors():
-            login = await _login_of(ctx)
-            added = await svc.tracked.add(login, group)
+            user_id, login = await _tracked_owner(ctx)
+            added = await svc.tracked.add(user_id, login, group)
         return f"группа {group} добавлена в отслеживаемые" if added else f"группа {group} уже отслеживается"
 
     @mcp.tool(annotations=READ_ONLY)
     async def list_tracked_groups(ctx: Context) -> list[str]:
         """Отслеживаемые группы пользователя в порядке добавления."""
         with friendly_errors():
-            return await svc.tracked.list(await _login_of(ctx))
+            return await svc.tracked.list(await user(ctx))
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True))
     async def remove_tracked_group(ctx: Context, group: str) -> str:
         """Убрать группу из отслеживаемых."""
         with friendly_errors():
-            removed = await svc.tracked.remove(await _login_of(ctx), group)
+            removed = await svc.tracked.remove(await user(ctx), group)
         return f"группа {group} больше не отслеживается" if removed else f"группа {group} не была в отслеживаемых"
 
     @mcp.tool(annotations=READ_ONLY)
@@ -560,7 +562,7 @@ def create_server(svc: Services) -> MCPServer:
         """Расписание всех отслеживаемых групп на один день (по умолчанию — на сегодня)."""
         with friendly_errors():
             on_date = parse_date(date) or parse_date("сегодня")
-            groups = await svc.tracked.list(await _login_of(ctx))
+            groups = await svc.tracked.list(await user(ctx))
         result = []
         for group in groups:
             try:
