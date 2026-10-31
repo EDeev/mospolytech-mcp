@@ -20,4 +20,5 @@ USER mcp
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && exec python -m mospolytech_mcp.server --http --host 0.0.0.0 --port 8000"]
+# миграции применяет отдельный шаг (сервис migrate в docker-compose), а не каждый старт сервера
+CMD ["python", "-m", "mospolytech_mcp.server", "--http", "--host", "0.0.0.0", "--port", "8000"]

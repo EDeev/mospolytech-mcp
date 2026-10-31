@@ -16,6 +16,18 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Одноразовый сервис: применяет миграции Alembic и завершается.
+  # Конвейер запускает его отдельным шагом (docker compose run --rm migrate) до развёртывания приложения.
+  migrate:
+    image: ghcr.io/edeev/mospolytech-mcp:${APP_TAG:-dev}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   mcp:
     image: ghcr.io/edeev/mospolytech-mcp:${APP_TAG:-dev}
     environment:
@@ -24,8 +36,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
