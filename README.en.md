@@ -58,8 +58,8 @@ cat > .env <<EOF
 POSTGRES_DB=mospolytech_mcp
 POSTGRES_USER=mospolytech_mcp
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
-MCP_SECRET_KEY=$(docker run --rm ghcr.io/edeev/mospolytech-mcp:1.0.0 python -m mospolytech_mcp.crypto)
-APP_TAG=1.0.0
+MCP_SECRET_KEY=$(docker run --rm ghcr.io/edeev/mospolytech-mcp:1.0.1 python -m mospolytech_mcp.crypto)
+APP_TAG=1.0.1
 EOF
 docker compose up -d
 curl http://127.0.0.1:8000/health
@@ -67,7 +67,7 @@ curl http://127.0.0.1:8000/health
 
 The `migrate` service applies the migrations and exits, then the server starts: `http://<host>:8000/mcp` is
 MCP, `http://<host>:8000/login` is the personal account login with ready-made client settings. Image tags:
-`1.0.0` and `latest` are releases, `prod` is what runs on prod now, `dev` is the `dev` branch.
+a version number (`1.0.1`) and `latest` are releases, `prod` is what runs on prod now, `dev` is the `dev` branch.
 
 From source, building the image: `cp .env.example .env`, set `MCP_SECRET_KEY`, `make docker-up`.
 

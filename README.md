@@ -55,8 +55,8 @@ cat > .env <<EOF
 POSTGRES_DB=mospolytech_mcp
 POSTGRES_USER=mospolytech_mcp
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
-MCP_SECRET_KEY=$(docker run --rm ghcr.io/edeev/mospolytech-mcp:1.0.0 python -m mospolytech_mcp.crypto)
-APP_TAG=1.0.0
+MCP_SECRET_KEY=$(docker run --rm ghcr.io/edeev/mospolytech-mcp:1.0.1 python -m mospolytech_mcp.crypto)
+APP_TAG=1.0.1
 EOF
 docker compose up -d
 curl http://127.0.0.1:8000/health
@@ -64,7 +64,7 @@ curl http://127.0.0.1:8000/health
 
 Сервис `migrate` накатывает миграции и завершается, после него стартует сервер:
 `http://<адрес>:8000/mcp` — MCP, `http://<адрес>:8000/login` — вход в ЛК и готовые настройки клиента.
-Теги образа: `1.0.0` и `latest` — релизы, `prod` — то, что сейчас на prod, `dev` — ветка `dev`.
+Теги образа: номер версии (`1.0.1`) и `latest` — релизы, `prod` — то, что сейчас на prod, `dev` — ветка `dev`.
 
 Из исходников, со сборкой образа: `cp .env.example .env`, вписать `MCP_SECRET_KEY`, `make docker-up`.
 

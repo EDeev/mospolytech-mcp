@@ -83,7 +83,7 @@ class FakeOpenData:
 
 
 class FakeLK:
-    """Минимальный личный кабинет: e.mospolytech.ru/old/lk_api.php + api.mospolytech.ru."""
+    """Минимальный личный кабинет: old-e.mospolytech.ru/lk_api.php + api.mospolytech.ru."""
 
     LOGIN = "deev.e.v"
     PASSWORD = "secret"
@@ -109,9 +109,9 @@ class FakeLK:
 
         if url.path == "/auth/token/reissue":
             return httpx.Response(200, json={"access_token": "jwt-2", "refresh_token": "refresh-2"})
-        if url.path == "/old" and request.method == "POST":
+        if url.path in ("", "/") and request.method == "POST":
             return httpx.Response(200, text="")
-        if url.path != "/old/lk_api.php":
+        if url.path != "/lk_api.php":
             return httpx.Response(404)
 
         if request.method == "POST" and not query:

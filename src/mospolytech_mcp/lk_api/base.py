@@ -19,7 +19,9 @@ from .errors import (
 )
 from .models import Tokens
 
-DEFAULT_LK_BASE_URL = "https://e.mospolytech.ru/old"
+# Старый PHP API ЛК с 2026-10-30 — отдельный домен; e.mospolytech.ru/old/lk_api.php теперь отдаёт страницу
+# фронтенда, а на POST отвечает 405.
+DEFAULT_LK_BASE_URL = "https://old-e.mospolytech.ru"
 DEFAULT_API_BASE_URL = "https://api.mospolytech.ru"
 # Соединение — 5 с: недоступный хост (api.mospolytech.ru с 2026-10-09 не принимает соединения) не должен держать
 # инструмент полминуты; ответ ЛК после соединения — по-прежнему до timeout.

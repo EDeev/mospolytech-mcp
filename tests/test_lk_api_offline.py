@@ -25,7 +25,7 @@ def make_client(handler) -> LKClient:
 
 async def test_login_success():
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/old/lk_api.php" and request.method == "POST":
+        if request.url.path == "/lk_api.php" and request.method == "POST":
             return httpx.Response(
                 200,
                 json={
